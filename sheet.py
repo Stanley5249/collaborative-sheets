@@ -1,10 +1,11 @@
 from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
+from enum import Enum
 from functools import partial
 from typing import Protocol
 
-__all__ = ["SheetsDatabase", "User", "Sheet"]
+__all__ = ["SheetsDatabase", "PermissionState", "User", "Sheet"]
 
 # ================================================================
 # datamodels
@@ -34,14 +35,29 @@ class Sheet:
 # ================================================================
 
 
+class PermissionState(Enum):
+    READONLY = "readonly"
+    EDITABLE = "editable"
+
+
 class SheetPermission(Protocol):
-    def post(self, sheets: dict[str, Sheet], sheetid: str) -> Sheet | None:
+    def post(
+        self,
+        sheets: dict[str, Sheet],
+        manager: dict[tuple[str, str], "SheetPermission"],
+        username: str,
+        sheetid: str,
+    ) -> Sheet | None:
         if sheetid in sheets:
             print(f"sheet {sheetid} already exists")
             return
 
+        manager[username, sheetid] = SheetEditable()
+        print(f"sheet {sheetid} permission changed to {PermissionState.EDITABLE.name}")
+
         sheets[sheetid] = sheet = Sheet(sheetid)
         print(f"sheet {sheetid} created")
+
         return sheet
 
     def get(self, sheets: dict[str, Sheet], sheetid: str) -> Sheet | None:
@@ -57,12 +73,30 @@ class SheetPermission(Protocol):
         self, sheets: dict[str, Sheet], sheetid: str, row: int, col: int, val: float
     ) -> Sheet | None: ...
 
+    @abstractmethod
+    def chmod(
+        self,
+        manager: dict[tuple[str, str], "SheetPermission"],
+        username: str,
+        sheetid: str,
+        state: PermissionState,
+    ) -> None: ...
+
 
 class SheetReadOnly(SheetPermission):
     def patch(
         self, sheets: dict[str, Sheet], sheetid: str, row: int, col: int, val: float
     ) -> Sheet | None:
         print(f"sheet {sheetid} is read-only")
+
+    def chmod(
+        self,
+        manager: dict[tuple[str, str], SheetPermission],
+        username: str,
+        sheetid: str,
+        state: PermissionState,
+    ) -> None:
+        print(f"sheet {sheetid} denies permission change to {state.name}")
 
 
 class SheetEditable(SheetPermission):
@@ -76,6 +110,24 @@ class SheetEditable(SheetPermission):
         sheet.data[row][col] = val
         print(f"sheet {sheetid} updated")
         return sheet
+
+    def chmod(
+        self,
+        manager: dict[tuple[str, str], SheetPermission],
+        username: str,
+        sheetid: str,
+        state: PermissionState,
+    ) -> None:
+        if state == PermissionState.READONLY:
+            permission = SheetReadOnly()
+        elif state == PermissionState.EDITABLE:
+            permission = SheetEditable()
+        else:
+            print("invalid PermissionState")
+            return
+
+        manager[username, sheetid] = permission
+        print(f"sheet {sheetid} permission changed to {state.name}")
 
 
 # ================================================================
@@ -126,7 +178,7 @@ class SheetsDatabase:
         if user is None:
             return
         permmision = self.manager[user.name, sheetid]
-        return permmision.post(self.sheets, sheetid)
+        return permmision.post(self.sheets, self.manager, user.name, sheetid)
 
     def patch_sheet(
         self, user: User | None, sheetid: str, row: int, col: int, val: float
@@ -135,3 +187,17 @@ class SheetsDatabase:
             return
         permmision = self.manager[user.name, sheetid]
         return permmision.patch(self.sheets, sheetid, row, col, val)
+
+    def chmod(
+        self,
+        user1: User | None,
+        user2: User | None,
+        sheetid: str,
+        state: PermissionState,
+    ) -> None:
+        if user1 is None:
+            return
+        if user2 is None:
+            return
+        permmision = self.manager[user1.name, sheetid]
+        permmision.chmod(self.manager, user2.name, sheetid, state)
