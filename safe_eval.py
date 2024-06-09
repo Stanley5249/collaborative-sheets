@@ -23,6 +23,7 @@ def arithmetics_eval(line: str) -> float | None:
                 | ast.Sub()
                 | ast.Mult()
                 | ast.Div()
+                | ast.FloorDiv()
                 | ast.Mod()
                 | ast.Pow(),
                 right=ast.Constant(value=int() | float()),
