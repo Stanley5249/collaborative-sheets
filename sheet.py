@@ -29,6 +29,12 @@ class Sheet:
     def __str__(self) -> str:
         return "\n".join(" ".join(format(x, "5.3g") for x in row) for row in self.data)
 
+    def patch(self, row: int, col: int, value: float) -> bool:
+        x = 0 <= row < len(self.data) and 0 <= col < len(self.data[0])
+        if x:
+            self.data[row][col] = value
+        return x
+
 
 # ================================================================
 # sheet permission proxies
@@ -49,23 +55,25 @@ class SheetPermission(Protocol):
         sheetid: str,
     ) -> Sheet | None:
         if sheetid in sheets:
-            print(f"sheet {sheetid} already exists")
+            print(f"sheet {sheetid!r} already exists")
             return
 
-        manager[username, sheetid] = SheetEditable()
-        print(f"sheet {sheetid} permission changed to {PermissionState.EDITABLE.name}")
-
         sheets[sheetid] = sheet = Sheet(sheetid)
-        print(f"sheet {sheetid} created")
+        print(f"sheet {sheetid!r} created")
+
+        manager[username, sheetid] = SheetEditable()
+        print(
+            f"sheet {sheetid!r} permission changed to {PermissionState.EDITABLE.name}"
+        )
 
         return sheet
 
     def get(self, sheets: dict[str, Sheet], sheetid: str) -> Sheet | None:
         if sheetid not in sheets:
-            print(f"sheet {sheetid} does not exist")
+            print(f"sheet {sheetid!r} does not exist")
             return
 
-        print(f"sheet {sheetid} retrieved")
+        print(f"sheet {sheetid!r} retrieved")
         return sheets[sheetid]
 
     @abstractmethod
@@ -87,7 +95,7 @@ class SheetReadOnly(SheetPermission):
     def patch(
         self, sheets: dict[str, Sheet], sheetid: str, row: int, col: int, val: float
     ) -> Sheet | None:
-        print(f"sheet {sheetid} is read-only")
+        print(f"sheet {sheetid!r} is read-only")
 
     def chmod(
         self,
@@ -96,7 +104,7 @@ class SheetReadOnly(SheetPermission):
         sheetid: str,
         state: PermissionState,
     ) -> None:
-        print(f"sheet {sheetid} denies permission change to {state.name}")
+        print(f"sheet {sheetid!r} denies permission change to {state.name}")
 
 
 class SheetEditable(SheetPermission):
@@ -107,9 +115,11 @@ class SheetEditable(SheetPermission):
         if sheet is None:
             return
 
-        sheet.data[row][col] = val
-        print(f"sheet {sheetid} updated")
-        return sheet
+        if sheet.patch(row, col, val):
+            print(f"sheet {sheetid!r} updated")
+            return sheet
+
+        print(f"invalid row {row} or col {col}")
 
     def chmod(
         self,
@@ -127,7 +137,7 @@ class SheetEditable(SheetPermission):
             return
 
         manager[username, sheetid] = permission
-        print(f"sheet {sheetid} permission changed to {state.name}")
+        print(f"sheet {sheetid!r} permission changed to {state.name}")
 
 
 # ================================================================
