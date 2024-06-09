@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from functools import partial
 from typing import Protocol
 
@@ -29,11 +29,12 @@ class Sheet:
     def __str__(self) -> str:
         return "\n".join(" ".join(format(x, "5.3g") for x in row) for row in self.data)
 
-    def patch(self, row: int, col: int, value: float) -> bool:
-        x = 0 <= row < len(self.data) and 0 <= col < len(self.data[0])
-        if x:
+    def patch(self, row: int, col: int, value: float) -> None:
+        if 0 <= row < len(self.data) and 0 <= col < len(self.data[0]):
             self.data[row][col] = value
-        return x
+            print(f"sheet {self.id!r} updated")
+        else:
+            print(f"invalid row {row} or col {col}")
 
 
 # ================================================================
@@ -41,12 +42,17 @@ class Sheet:
 # ================================================================
 
 
-class PermissionState(Enum):
+class PermissionState(StrEnum):
     READONLY = "readonly"
     EDITABLE = "editable"
 
 
 class SheetPermission(Protocol):
+    is_owner: bool
+
+    def __init__(self, is_owner: bool) -> None:
+        self.is_owner = is_owner
+
     def post(
         self,
         sheets: dict[str, Sheet],
@@ -61,7 +67,7 @@ class SheetPermission(Protocol):
         sheets[sheetid] = sheet = Sheet(sheetid)
         print(f"sheet {sheetid!r} created")
 
-        manager[username, sheetid] = SheetEditable()
+        manager[username, sheetid] = SheetEditable(True)
         print(
             f"sheet {sheetid!r} permission changed to {PermissionState.EDITABLE.name}"
         )
@@ -81,30 +87,34 @@ class SheetPermission(Protocol):
         self, sheets: dict[str, Sheet], sheetid: str, row: int, col: int, val: float
     ) -> Sheet | None: ...
 
-    @abstractmethod
     def chmod(
         self,
         manager: dict[tuple[str, str], "SheetPermission"],
         username: str,
         sheetid: str,
         state: PermissionState,
-    ) -> None: ...
+    ) -> None:
+        if self.is_owner:
+            if state == PermissionState.READONLY:
+                permission = SheetReadOnly(self.is_owner)
+            elif state == PermissionState.EDITABLE:
+                permission = SheetEditable(self.is_owner)
+            else:
+                print(f"invalid {PermissionState.__name__}")
+                return
+
+            manager[username, sheetid] = permission
+            print(f"sheet {sheetid!r} permission changed to {state.name}")
+
+        else:
+            print(f"sheet {sheetid!r} denies permission change to {state.name}")
 
 
 class SheetReadOnly(SheetPermission):
     def patch(
         self, sheets: dict[str, Sheet], sheetid: str, row: int, col: int, val: float
     ) -> Sheet | None:
-        print(f"sheet {sheetid!r} is read-only")
-
-    def chmod(
-        self,
-        manager: dict[tuple[str, str], SheetPermission],
-        username: str,
-        sheetid: str,
-        state: PermissionState,
-    ) -> None:
-        print(f"sheet {sheetid!r} denies permission change to {state.name}")
+        print(f"sheet {sheetid!r} is {PermissionState.READONLY.name}")
 
 
 class SheetEditable(SheetPermission):
@@ -116,28 +126,7 @@ class SheetEditable(SheetPermission):
             return
 
         if sheet.patch(row, col, val):
-            print(f"sheet {sheetid!r} updated")
             return sheet
-
-        print(f"invalid row {row} or col {col}")
-
-    def chmod(
-        self,
-        manager: dict[tuple[str, str], SheetPermission],
-        username: str,
-        sheetid: str,
-        state: PermissionState,
-    ) -> None:
-        if state == PermissionState.READONLY:
-            permission = SheetReadOnly()
-        elif state == PermissionState.EDITABLE:
-            permission = SheetEditable()
-        else:
-            print("invalid PermissionState")
-            return
-
-        manager[username, sheetid] = permission
-        print(f"sheet {sheetid!r} permission changed to {state.name}")
 
 
 # ================================================================
@@ -150,7 +139,7 @@ class SheetsDatabase:
     users: dict[str, User] = field(default_factory=dict)
     sheets: dict[str, Sheet] = field(default_factory=dict)
     manager: dict[tuple[str, str], SheetPermission] = field(
-        default_factory=partial(defaultdict, SheetReadOnly)
+        default_factory=partial(defaultdict, partial(SheetReadOnly, False))
     )
 
     # ================================================================
