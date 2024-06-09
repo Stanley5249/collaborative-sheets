@@ -1,5 +1,6 @@
 from sheet import PermissionState, SheetsDatabase
 from sugar import ArgumentShell
+from safe_eval import arithmetics_eval
 
 app = ArgumentShell()
 db = SheetsDatabase()
@@ -28,8 +29,11 @@ def check(username: str, sheetid: str) -> None:
 
 
 @app.command()
-def patch(username: str, sheetid: str, row: int, col: int, value: float) -> None:
+def patch(username: str, sheetid: str, row: int, col: int, expr: str) -> None:
     """Patch a sheet"""
+    value = arithmetics_eval(expr)
+    if value is None:
+        return
     user = db.get_user(username)
     db.patch_sheet(user, sheetid, row, col, value)
 

@@ -8,13 +8,28 @@ Runner
 
 import sys
 from argparse import ArgumentError, ArgumentParser
+from ast import literal_eval
 from collections.abc import Callable
-from functools import partial
+from functools import cache, partial, wraps
 from inspect import getdoc, signature
 from shlex import split
 from typing import Any, NoReturn, Sequence
 
 __all__ = ["ArgumentShell"]
+
+
+@cache
+def _literal_eval_type[T](type_: Callable[[Any], T]) -> Callable[[str], T]:
+    @wraps(type_)
+    def handler(x: str) -> T:
+        try:
+            lit = literal_eval(x)
+        except SyntaxError:
+            raise ValueError(f"invalid syntax: {x}")
+        else:
+            return type_(lit)
+
+    return handler
 
 
 def _add_arguments(parser: ArgumentParser, obj: Callable[..., Any]) -> None:
@@ -23,19 +38,25 @@ def _add_arguments(parser: ArgumentParser, obj: Callable[..., Any]) -> None:
 
     for arg, param in sig.parameters.items():
         kwargs = {}
-        if param.annotation is not param.empty:
-            kwargs["type"] = param.annotation
+
+        annotation = param.annotation
+
+        if annotation is not param.empty:
+            if not issubclass(annotation, str):
+                annotation = _literal_eval_type(annotation)
+
+            kwargs["type"] = annotation
 
         if param.kind == param.POSITIONAL_ONLY:
-            name_or_flags = (arg,)
+            args = (arg,)
         elif param.kind == param.POSITIONAL_OR_KEYWORD:
-            name_or_flags = (arg,)
+            args = (arg,)
         elif param.kind == param.KEYWORD_ONLY:
-            name_or_flags = (f"-{arg[0]}", f"--{arg}")
+            args = (f"-{arg[0]}", f"--{arg}")
         else:
             raise ValueError(f"unsupported parameter kind: {param.kind}")
 
-        parser.add_argument(*name_or_flags, **kwargs)
+        parser.add_argument(*args, **kwargs)
 
 
 class _ArgumentParser(ArgumentParser):
