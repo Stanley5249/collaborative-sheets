@@ -47,17 +47,17 @@ This will start the application and allow you to interact with it using the prov
 
 ## Implementation Details
 
-### main.py
+### `main.py`
 
 Main program which decorates commands in `ArgumentShell` to define the behavior of each command.
 
-### safe_eval.py
+### `safe_eval.py`
 
 Safe arithmetic evaluation:
 - Parses and evaluates arithmetic expressions securely.
 - Supports operations: `+`, `-`, `*`, `/`, `%`, `**`, `//`, scientific notation, and other number bases.
 
-### sheet.py
+### `sheet.py`
 
 Defines data types and operations:
 
@@ -95,7 +95,7 @@ Defines data types and operations:
     - `patch_sheet(user, sheetid, row, column, value)`
     - `chmod(user1, user2, sheetid, state)`
 
-### sugar.py
+### `sugar.py`
 
 Command management:
 - Adds commands to `ArgumentShell` and parser.
